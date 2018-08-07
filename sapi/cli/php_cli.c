@@ -1251,11 +1251,20 @@ int main(int argc, char *argv[])
 	ZEND_TSRMLS_CACHE_UPDATE();
 #endif
 
-	// todo 处理信号量,暂时先不看。
-	// 2018-08-06
+	/**
+	 * todo 处理信号量,暂时先不看。
+	 * 2018-08-06
+	 * ------------------------------------------------------------------------
+	 * 如果 php 脚本执行了一个长时间的脚本，如何停止呢？
+	 * 只能依赖于，在信号量中监听 ctrl + c 
+	 * 2018-08-07
+	 */ 
 	zend_signal_startup();
 
     
+    /**
+     * 解析命令行参数。
+     */
 	while ((c = php_getopt(argc, argv, OPTIONS, &php_optarg, &php_optind, 0, 2))!=-1) {
 		switch (c) {
 			case 'c':
