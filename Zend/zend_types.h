@@ -48,21 +48,20 @@ typedef intptr_t zend_intptr_t;
 //定义无符号整型类型
 typedef uintptr_t zend_uintptr_t;
 
-#ifdef ZTS
-#define ZEND_TLS static TSRM_TLS
-#define ZEND_EXT_TLS TSRM_TLS
-#else
 #define ZEND_TLS static
 #define ZEND_EXT_TLS
-#endif
 
+/**
+ * 下面的一群 typedef 都是把内部的结构体对外释放，然后改了个名字
+ * 这个头文件可以说是最重要的头文件了。整个 php 大厦基本是建立在
+ * 这个文件中定义的结构体之上。
+ * @author ufoddd001@gmail.com
+ */
 typedef struct _zend_object_handlers zend_object_handlers;
 typedef struct _zend_class_entry     zend_class_entry;
 typedef union  _zend_function        zend_function;
 typedef struct _zend_execute_data    zend_execute_data;
-
 typedef struct _zval_struct     zval;
-
 typedef struct _zend_refcounted zend_refcounted;
 typedef struct _zend_string     zend_string;
 typedef struct _zend_array      zend_array;
@@ -79,6 +78,8 @@ typedef void (*dtor_func_t)(zval *pDest);
 typedef void (*copy_ctor_func_t)(zval *pElement);
 
 /*
+ * 这又是一群丧失的宏。暂时没看。回头看
+ * -----------------------------------------------------------------------------------
  * zend_type - is an abstraction layer to represent information about type hint.
  * It shouldn't be used directly. Only through ZEND_TYPE_* macros.
  *
@@ -136,28 +137,40 @@ typedef uintptr_t zend_type;
 #define ZEND_TYPE_ENCODE_CLASS_CONST(class_name, allow_null) \
 	ZEND_TYPE_ENCODE_CLASS_CONST_Q1(allow_null, class_name)
 
+/**
+ * 麻蛋，为啥这个定义又不跟上面一样分开typedef 和 struct呢。就因为这个是union吗
+ * union 和 struct不太一样的是，union 同一时间只能有一个值是存在的。而 struct 则
+ * 可以同时存在多个值。所以 union 应该的再封装一层，以便能够随时获知要读取union
+ * @author ufoddd001@gmail.com
+ */
 typedef union _zend_value {
-	zend_long         lval;				/* long value */
-	double            dval;				/* double value */
+	zend_long         lval;			 // long 
+	double            dval;			 // double
 	zend_refcounted  *counted;
-	zend_string      *str;
-	zend_array       *arr;
-	zend_object      *obj;
-	zend_resource    *res;
-	zend_reference   *ref;
-	zend_ast_ref     *ast;
-	zval             *zv;
-	void             *ptr;
-	zend_class_entry *ce;
-	zend_function    *func;
+	zend_string      *str;           // 字符串
+	zend_array       *arr;           // 数组
+	zend_object      *obj;		     // 对象
+	zend_resource    *res;			 // 资源
+	zend_reference   *ref;			 // 是否引用？
+	zend_ast_ref     *ast;			 // todo 不知道这个是啥？
+	zval             *zv;			 // zval,这个有点忘了是啥了
+	void             *ptr;			 // todo 不知道这个是啥？
+	zend_class_entry *ce;			 // todo 不知道这个是啥？
+	zend_function    *func;		     // todo 不知道这个是啥？
 	struct {
 		uint32_t w1;
 		uint32_t w2;
 	} ww;
 } zend_value;
 
+/**
+ * php 弱类型变量的实现机制。
+ * 这里的一个_zval_struct就是一个 php 的变量，比如 $var, 具体这个zval的值是保存在了zvalue中。
+ * 使用u1这个联合体来判断到底是读取 zend_value中的哪一个字段
+ *
+ */
 struct _zval_struct {
-	zend_value        value;			/* value */
+	zend_value        value;				/* 具体的数据 */
 	union {
 		struct {
 			ZEND_ENDIAN_LOHI_4(
@@ -198,7 +211,11 @@ struct _zend_refcounted {
 	zend_refcounted_h gc;
 };
 
-struct _zend_string {
+/**
+ * 字符串。
+ * 
+ */
+struct _zend_string { 
 	zend_refcounted_h gc;
 	zend_ulong        h;                /* hash value */
 	size_t            len;
