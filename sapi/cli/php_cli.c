@@ -69,15 +69,9 @@
 #include "ps_title.h"
 #include "php_cli_process_title.h"
 
-#ifndef PHP_WIN32
-# define php_select(m, r, w, e, t)	select(m, r, w, e, t)
-#else
-# include "win32/select.h"
-#endif
+#define php_select(m, r, w, e, t)	select(m, r, w, e, t)
 
-#if defined(PHP_WIN32) && defined(HAVE_OPENSSL)
-# include "openssl/applink.c"
-#endif
+#include "openssl/applink.c"
 
 PHPAPI extern char *php_ini_opened_path;
 PHPAPI extern char *php_ini_scanned_path;
@@ -113,6 +107,7 @@ PHP_CLI_API cli_shell_callbacks_t *php_cli_get_shell_callbacks()
 	return &cli_shell_callbacks;
 }
 
+//硬编码的 ini 配置
 const char HARDCODED_INI[] =
 	"html_errors=0\n"
 	"register_argc_argv=1\n"
@@ -163,23 +158,28 @@ const opt_struct OPTIONS[] = {
 	{'-', 0, NULL} /* end of args */
 };
 
-static int print_module_info(zval *element) /* {{{ */
+/**
+ * 下面会定义很多的函数，这些基本上都是为了初始化 spi_module_struct模块, 这个模块需要一堆函数指针。
+ * 所以这里定义的实际上就是 cli 运行模式下的一些函数方法。虽然只是在 c 语言中，而且也没有明确的说
+ * 明动态、抽象之类的，但是只是通过了函数指针，实际上就类似于类的继承结构。 
+ */
+static int print_module_info(zval *element)
 {
 	zend_module_entry *module = (zend_module_entry*)Z_PTR_P(element);
 	php_printf("%s\n", module->name);
 	return ZEND_HASH_APPLY_KEEP;
 }
-/* }}} */
 
-static int module_name_cmp(const void *a, const void *b) /* {{{ */
+static int module_name_cmp(const void *a, const void *b) 
 {
 	Bucket *f = (Bucket *) a;
 	Bucket *s = (Bucket *) b;
 
-	return strcasecmp(((zend_module_entry *)Z_PTR(f->val))->name,
-				  ((zend_module_entry *)Z_PTR(s->val))->name);
+	return strcasecmp(
+		((zend_module_entry *) Z_PTR(f->val))->name, 
+		((zend_module_entry *) Z_PTR(s->val))->name
+	);
 }
-/* }}} */
 
 static void print_modules(void) /* {{{ */
 {
@@ -421,6 +421,9 @@ static int php_cli_startup(sapi_module_struct *sapi_module) /* {{{ */
 	ZVAL_NEW_STR(&tmp, zend_string_init(value, sizeof(value)-1, 1));\
 	zend_hash_str_update(configuration_hash, name, sizeof(name)-1, &tmp);\
 
+/**
+ * 默认配置 ini
+ */
 static void sapi_cli_ini_defaults(HashTable *configuration_hash)
 {
 	zval tmp;
@@ -654,7 +657,7 @@ static int do_cli(int argc, char **argv) /* {{{ */
 	volatile int request_started = 0;
 	volatile int exit_status = 0;
 	char *php_optarg = NULL, *orig_optarg = NULL;
-	int php_optind = 1, orig_optind = 1;
+	int php_opts_index = 1, orig_optind = 1;
 	char *exec_direct=NULL, *exec_run=NULL, *exec_begin=NULL, *exec_end=NULL;
 	char *arg_free=NULL, **arg_excp=&arg_free;
 	char *script_file=NULL, *translated_path = NULL;
@@ -667,7 +670,7 @@ static int do_cli(int argc, char **argv) /* {{{ */
 
 		CG(in_compilation) = 0; /* not initialized but needed for several options */
 
-		while ((c = php_getopt(argc, argv, OPTIONS, &php_optarg, &php_optind, 0, 2)) != -1) {
+		while ((c = php_getopt(argc, argv, OPTIONS, &php_optarg, &php_opts_index, 0, 2)) != -1) {
 			switch (c) {
 
 			case 'i': /* php info & quit */
@@ -730,9 +733,9 @@ static int do_cli(int argc, char **argv) /* {{{ */
 		/* Set some CLI defaults */
 		SG(options) |= SAPI_OPTION_NO_CHDIR;
 
-		php_optind = orig_optind;
+		php_opts_index = orig_optind;
 		php_optarg = orig_optarg;
-		while ((c = php_getopt(argc, argv, OPTIONS, &php_optarg, &php_optind, 0, 2)) != -1) {
+		while ((c = php_getopt(argc, argv, OPTIONS, &php_optarg, &php_opts_index, 0, 2)) != -1) {
 			switch (c) {
 
 			case 'a':	/* interactive mode */
@@ -905,9 +908,9 @@ static int do_cli(int argc, char **argv) /* {{{ */
 			is essential to mitigate buggy console info. */
 			interactive = php_win32_console_is_own() &&
 				!(script_file ||
-					argc > php_optind && behavior!=PHP_MODE_CLI_DIRECT &&
+					argc > php_opts_index && behavior!=PHP_MODE_CLI_DIRECT &&
 					behavior!=PHP_MODE_PROCESS_STDIN &&
-					strcmp(argv[php_optind-1],"--")
+					strcmp(argv[php_opts_index-1],"--")
 				);
 		}
 #endif
@@ -922,14 +925,14 @@ static int do_cli(int argc, char **argv) /* {{{ */
 		}
 
 		/* only set script_file if not set already and not in direct mode and not at end of parameter list */
-		if (argc > php_optind
+		if (argc > php_opts_index
 		  && !script_file
 		  && behavior!=PHP_MODE_CLI_DIRECT
 		  && behavior!=PHP_MODE_PROCESS_STDIN
-		  && strcmp(argv[php_optind-1],"--"))
+		  && strcmp(argv[php_opts_index-1],"--"))
 		{
-			script_file=argv[php_optind];
-			php_optind++;
+			script_file=argv[php_opts_index];
+			php_opts_index++;
 		}
 		if (script_file) {
 			if (cli_seek_file_begin(&file_handle, script_file, &lineno) != SUCCESS) {
@@ -956,12 +959,12 @@ static int do_cli(int argc, char **argv) /* {{{ */
 
 		/* before registering argv to module exchange the *new* argv[0] */
 		/* we can achieve this without allocating more memory */
-		SG(request_info).argc=argc-php_optind+1;
-		arg_excp = argv+php_optind-1;
-		arg_free = argv[php_optind-1];
+		SG(request_info).argc=argc-php_opts_index+1;
+		arg_excp = argv+php_opts_index-1;
+		arg_free = argv[php_opts_index-1];
 		SG(request_info).path_translated = translated_path? translated_path: (char*)file_handle.filename;
-		argv[php_optind-1] = (char*)file_handle.filename;
-		SG(request_info).argv=argv+php_optind-1;
+		argv[php_opts_index-1] = (char*)file_handle.filename;
+		SG(request_info).argv=argv+php_opts_index-1;
 
 		if (php_request_startup()==FAILURE) {
 			*arg_excp = arg_free;
@@ -1198,8 +1201,8 @@ int main(int argc, char *argv[])
 	//todo php_opt_argument?
 	char *php_optarg = NULL;
 
-	//todo php_opt_ind ?
-	int php_optind = 1;
+	//正在处理的输入参数的索引，从1开始貌似是因为第0个参数是 `php` 
+	int php_opts_index = 1;
 
 	//是否使用扩展
 	int use_extended_info = 0;
@@ -1245,12 +1248,6 @@ int main(int argc, char *argv[])
 #endif
 
 
-#ifdef ZTS
-	tsrm_startup(1, 1, 0, NULL);
-	(void)ts_resource(0);
-	ZEND_TSRMLS_CACHE_UPDATE();
-#endif
-
 	/**
 	 * todo 处理信号量,暂时先不看。
 	 * 2018-08-06
@@ -1264,8 +1261,9 @@ int main(int argc, char *argv[])
     
     /**
      * 解析命令行参数。
+     * ------------------------------------------------
      */
-	while ((c = php_getopt(argc, argv, OPTIONS, &php_optarg, &php_optind, 0, 2))!=-1) {
+	while ((c = php_getopt(argc, argv, OPTIONS, &php_optarg, &php_opts_index, 0, 2))!=-1) {
 		switch (c) {
 			case 'c':
 				if (ini_path_override) {
@@ -1307,13 +1305,12 @@ int main(int argc, char *argv[])
 				}
 				break;
 			}
-#ifndef PHP_CLI_WIN32_NO_CONSOLE
 			case 'S':
 				sapi_module = &cli_server_sapi_module;
 				cli_server_sapi_module.additional_functions = server_additional_functions;
 				break;
-#endif
-			case 'h': /* help & quit */
+			//帮助模式
+			case 'h': 
 			case '?':
 				php_cli_usage(argv[0]);
 				goto out;
@@ -1325,15 +1322,36 @@ int main(int argc, char *argv[])
 				break;
 		}
 	}
-exit_loop:
 
+/**
+ * 退出循环,但是循环在哪呢？
+ * 哦，现在看懂了，退出的循环是说的上述的 while( php_getopt() ),也就是解析所有的参数。
+ * 在解析过程中，如果遇到了特殊的参数，可能会提前跳转到 exit_loop,或者 out。但是如果
+ * 所有的参数都解析完了之后，会顺序执行所有的 section,先执行 exit_loop,然后执行out
+ * ------------------------------------------------------------------------------------
+ * @author ufoddd001@gamil.com
+ */
+exit_loop:
+	// exit_loop结束了参数的解析，然后开始执行真正的主体方法	
+
+	// ini 默认加载的函数
 	sapi_module->ini_defaults = sapi_cli_ini_defaults;
+
+	//覆盖的 ini 路径,在 cli 模式这个值是 null
 	sapi_module->php_ini_path_override = ini_path_override;
+
+	//是否输出php-info 作为普通text
 	sapi_module->phpinfo_as_text = 1;
+
+	//todo ini 是否忽略 cwd, cwd 是啥？ 
 	sapi_module->php_ini_ignore_cwd = 1;
+
 	sapi_startup(sapi_module);
+
+	//临时标记sapi_started为1具体是否成功是在sapi_module里
 	sapi_started = 1;
 
+	//设置是否忽略ini
 	sapi_module->php_ini_ignore = ini_ignore;
 
 	sapi_module->executable_location = argv[0];
@@ -1364,18 +1382,6 @@ exit_loop:
 	}
 	module_started = 1;
 
-#if defined(PHP_WIN32) && !defined(PHP_CLI_WIN32_NO_CONSOLE)
-	php_win32_cp_cli_setup();
-	orig_cp = (php_win32_cp_get_orig())->id;
-	/* Ignore the delivered argv and argc, read from W API. This place
-		might be too late though, but this is the earliest place ATW
-		we can access the internal charset information from PHP. */
-	argv_wide = CommandLineToArgvW(GetCommandLineW(), &num_args);
-	PHP_WIN32_CP_W_TO_ANY_ARRAY(argv_wide, num_args, argv, argc)
-	using_wide_argv = 1;
-
-	SetConsoleCtrlHandler(php_cli_win32_ctrl_handler, TRUE);
-#endif
 
 	/* -e option */
 	if (use_extended_info) {
@@ -1383,15 +1389,11 @@ exit_loop:
 	}
 
 	zend_first_try {
-#ifndef PHP_CLI_WIN32_NO_CONSOLE
 		if (sapi_module == &cli_sapi_module) {
-#endif
 			exit_status = do_cli(argc, argv);
-#ifndef PHP_CLI_WIN32_NO_CONSOLE
 		} else {
 			exit_status = do_cli_server(argc, argv);
 		}
-#endif
 	} zend_end_try();
 out:
 	if (ini_path_override) {
@@ -1406,19 +1408,6 @@ out:
 	if (sapi_started) {
 		sapi_shutdown();
 	}
-#ifdef ZTS
-	tsrm_shutdown();
-#endif
-
-#if defined(PHP_WIN32) && !defined(PHP_CLI_WIN32_NO_CONSOLE)
-	(void)php_win32_cp_cli_restore();
-
-	if (using_wide_argv) {
-		PHP_WIN32_CP_FREE_ARRAY(argv, argc);
-		LocalFree(argv_wide);
-	}
-	argv = argv_save;
-#endif
 	/*
 	 * Do not move this de-initialization. It needs to happen right before
 	 * exiting.
@@ -1426,13 +1415,4 @@ out:
 	cleanup_ps_args(argv);
 	exit(exit_status);
 }
-/* }}} */
 
-/*
- * Local variables:
- * tab-width: 4
- * c-basic-offset: 4
- * End:
- * vim600: sw=4 ts=4 fdm=marker
- * vim<600: sw=4 ts=4
- */

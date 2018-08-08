@@ -89,7 +89,7 @@ PHPAPI int php_getopt(int argc, char* const *argv, const opt_struct opts[], char
 	//重新赋值参数
 	prev_optarg = optarg;
 
-    // ?
+	//如果正在处理的下标索引已经超过了参数的总和，那肯定 gg 了
 	if (*optind >= argc) {
 		return(EOF);
 	}
@@ -112,6 +112,7 @@ PHPAPI int php_getopt(int argc, char* const *argv, const opt_struct opts[], char
 			return(EOF);
 		}
 	}
+	
 	if ((argv[*optind][0] == '-') && (argv[*optind][1] == '-')) {
 		const char *pos;
 		size_t arg_end = strlen(argv[*optind])-1;
