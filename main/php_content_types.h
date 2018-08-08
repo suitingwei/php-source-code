@@ -21,6 +21,7 @@
 #ifndef PHP_CONTENT_TYPES_H
 #define PHP_CONTENT_TYPES_H
 
+//默认的 post 读取的是 form 表单的
 #define DEFAULT_POST_CONTENT_TYPE "application/x-www-form-urlencoded"
 
 SAPI_API SAPI_POST_READER_FUNC(php_default_post_reader);

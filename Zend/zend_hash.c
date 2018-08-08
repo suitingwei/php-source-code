@@ -92,12 +92,11 @@ static void _zend_is_inconsistent(const HashTable *ht, const char *file, int lin
 
 static void ZEND_FASTCALL zend_hash_do_resize(HashTable *ht);
 
+/**
+ * 检查 hashtable的大小能不能设置，不能设置了就报错了
+ */
 static zend_always_inline uint32_t zend_hash_check_size(uint32_t nSize)
 {
-#if defined(ZEND_WIN32)
-	unsigned long index;
-#endif
-
 	/* Use big enough power of 2 */
 	/* size should be between HT_MIN_SIZE and HT_MAX_SIZE */
 	if (nSize < HT_MIN_SIZE) {
@@ -106,15 +105,7 @@ static zend_always_inline uint32_t zend_hash_check_size(uint32_t nSize)
 		zend_error_noreturn(E_ERROR, "Possible integer overflow in memory allocation (%u * %zu + %zu)", nSize, sizeof(Bucket), sizeof(Bucket));
 	}
 
-#if defined(ZEND_WIN32)
-	if (BitScanReverse(&index, nSize - 1)) {
-		return 0x2 << ((31 - index) ^ 0x1f);
-	} else {
-		/* nSize is ensured to be in the valid range, fall back to it
-		   rather than using an undefined bis scan result. */
-		return nSize;
-	}
-#elif (defined(__GNUC__) || __has_builtin(__builtin_clz))  && defined(PHP_HAVE_BUILTIN_CLZ)
+#if (defined(__GNUC__) || __has_builtin(__builtin_clz))  && defined(PHP_HAVE_BUILTIN_CLZ)
 	return 0x2 << (__builtin_clz(nSize - 1) ^ 0x1f);
 #else
 	nSize -= 1;
@@ -170,18 +161,42 @@ static zend_always_inline void zend_hash_check_init(HashTable *ht, int packed)
 static const uint32_t uninitialized_bucket[-HT_MIN_MASK] =
 	{HT_INVALID_IDX, HT_INVALID_IDX};
 
+/**
+ * 
+ *
+ *
+ */
 ZEND_API void ZEND_FASTCALL _zend_hash_init(HashTable *ht, uint32_t nSize, dtor_func_t pDestructor, zend_bool persistent ZEND_FILE_LINE_DC)
 {
+	//设置gc_ref_count =1 
 	GC_REFCOUNT(ht) = 1;
+
+	//设置gc type 是 array
 	GC_TYPE_INFO(ht) = IS_ARRAY | (persistent ? 0 : (GC_COLLECTABLE << GC_FLAGS_SHIFT));
+
+	//设置 hash-table的 flag
 	ht->u.flags = (persistent ? HASH_FLAG_PERSISTENT : 0) | HASH_FLAG_APPLY_PROTECTION | HASH_FLAG_STATIC_KEYS;
+
+	//设置 table 的大小为默认的最小值
 	ht->nTableMask = HT_MIN_MASK;
+
+	//todo 设置数据的地址
 	HT_SET_DATA_ADDR(ht, &uninitialized_bucket);
+
+	//初始化嘛，使用的数据肯定都是0
 	ht->nNumUsed = 0;
 	ht->nNumOfElements = 0;
+
+	//内部指针，oh my god,在php 的源代码里看到 漫山遍野的foreach 使用的内部指针真是 high
 	ht->nInternalPointer = HT_INVALID_IDX;
+
+	//下一个可用的元素
 	ht->nNextFreeElement = 0;
+
+	//hashTable 析构函数，用于释放内存吧
 	ht->pDestructor = pDestructor;
+
+	//设置 hashtable 的大小
 	ht->nTableSize = zend_hash_check_size(nSize);
 }
 
@@ -233,6 +248,11 @@ ZEND_API void ZEND_FASTCALL zend_hash_to_packed(HashTable *ht)
 	pefree(old_data, (ht)->u.flags & HASH_FLAG_PERSISTENT);
 }
 
+/**
+ * 初始化hash table,这个方法就是多了几个字段而已
+ * --------------------------------------
+ * zend_hash_init_ex 就是比： zend_hash_init
+ */
 ZEND_API void ZEND_FASTCALL _zend_hash_init_ex(HashTable *ht, uint32_t nSize, dtor_func_t pDestructor, zend_bool persistent, zend_bool bApplyProtection ZEND_FILE_LINE_DC)
 {
 	_zend_hash_init(ht, nSize, pDestructor, persistent ZEND_FILE_LINE_RELAY_CC);

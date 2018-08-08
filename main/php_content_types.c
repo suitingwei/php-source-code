@@ -24,14 +24,16 @@
 
 #include "php_content_types.h"
 
-/* {{{ php_post_entries[]
+/**
+ * post数据的来源。好像post_entry是这个意思  
+ * 第一种：普通的 html form 表单上传的数据： application/x-www-form-urlencoded,都是key-value
+ * 第二种：form表单中新增的file标签， rfc-1867-uploaded-file,是二进制流水
  */
 static sapi_post_entry php_post_entries[] = {
 	{ DEFAULT_POST_CONTENT_TYPE, sizeof(DEFAULT_POST_CONTENT_TYPE)-1, sapi_read_standard_form_data,	php_std_post_handler },
 	{ MULTIPART_CONTENT_TYPE,    sizeof(MULTIPART_CONTENT_TYPE)-1,    NULL,                         rfc1867_post_handler },
 	{ NULL, 0, NULL, NULL }
 };
-/* }}} */
 
 /* {{{ SAPI_POST_READER_FUNC
  */
@@ -57,7 +59,9 @@ int php_startup_sapi_content_types(void)
 }
 /* }}} */
 
-/* {{{ php_setup_sapi_content_types
+/**
+ * 设置sapi的 content-type
+ * 初始化的时候才设置呢
  */
 int php_setup_sapi_content_types(void)
 {

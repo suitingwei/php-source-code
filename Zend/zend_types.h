@@ -1,23 +1,3 @@
-/*
-   +----------------------------------------------------------------------+
-   | Zend Engine                                                          |
-   +----------------------------------------------------------------------+
-   | Copyright (c) 1998-2018 Zend Technologies Ltd. (http://www.zend.com) |
-   +----------------------------------------------------------------------+
-   | This source file is subject to version 2.00 of the Zend license,     |
-   | that is bundled with this package in the file LICENSE, and is        |
-   | available through the world-wide-web at the following url:           |
-   | http://www.zend.com/license/2_00.txt.                                |
-   | If you did not receive a copy of the Zend license and are unable to  |
-   | obtain it through the world-wide-web, please send a note to          |
-   | license@zend.com so we can mail you a copy immediately.              |
-   +----------------------------------------------------------------------+
-   | Authors: Andi Gutmans <andi@zend.com>                                |
-   |          Zeev Suraski <zeev@zend.com>                                |
-   |          Dmitry Stogov <dmitry@zend.com>                             |
-   |          Xinchen Hui <xinchen.h@zend.com>                            |
-   +----------------------------------------------------------------------+
-*/
 
 /* $Id$ */
 
@@ -43,29 +23,29 @@
 # define ZEND_ENDIAN_LOHI_C_4(a, b, c, d)  a, b, c, d
 #endif
 
+// 这个虽然看起来简单，但是也是为了效率，没有用 int 作为 bool 值，而是用的一个字节的 char,当然是无符号的 char
 typedef unsigned char zend_bool;
+
+//todo 这个暂时不知道是啥
 typedef unsigned char zend_uchar;
 
+//成功失败的枚举值
 typedef enum {
   SUCCESS =  0,
   FAILURE = -1,		/* this MUST stay a negative number, or it may affect functions! */
 } ZEND_RESULT_CODE;
 
+//定义最大值
 #ifdef ZEND_ENABLE_ZVAL_LONG64
-# ifdef ZEND_WIN32
-#  define ZEND_SIZE_MAX  _UI64_MAX
-# else
 #  define ZEND_SIZE_MAX  SIZE_MAX
-# endif
 #else
-# if defined(ZEND_WIN32)
-#  define ZEND_SIZE_MAX  _UI32_MAX
-# else
 #  define ZEND_SIZE_MAX SIZE_MAX
-# endif
 #endif
 
+//定义整型指针类型 
 typedef intptr_t zend_intptr_t;
+
+//定义无符号整型类型
 typedef uintptr_t zend_uintptr_t;
 
 #ifdef ZTS
@@ -319,9 +299,14 @@ struct _zend_array {
 #define HT_HASH_TO_BUCKET(ht, idx) \
 	HT_HASH_TO_BUCKET_EX((ht)->arData, idx)
 
+// 大哥的宏定义在这里已经有点超凡脱俗了我擦，这是啥玩意，这么复杂。
+// do-while(0)我知道，这个意思是只执行一次,主要是保证复杂语句不会出错
+// 可见在 c 语言里，想编写不可维护代码多么容易，一个考虑不严格的宏定义可能就让你在各种意想不到的地方翻车
+// 这个方法的意思是设置hashtable的arData的地址空间
 #define HT_SET_DATA_ADDR(ht, ptr) do { \
-		(ht)->arData = (Bucket*)(((char*)(ptr)) + HT_HASH_SIZE((ht)->nTableMask)); \
+		(ht)->arData = (Bucket*)( ( (char*)(ptr) ) + HT_HASH_SIZE((ht)->nTableMask) ); \
 	} while (0)
+
 #define HT_GET_DATA_ADDR(ht) \
 	((char*)((ht)->arData) - HT_HASH_SIZE((ht)->nTableMask))
 
@@ -434,6 +419,9 @@ static zend_always_inline zend_uchar zval_get_type(const zval* pz) {
 #define Z_TYPE_FLAGS_SHIFT			8
 #define Z_CONST_FLAGS_SHIFT			16
 
+//大哥就是大哥，这代码不知道是猴年马月的，他就知道把一些常用的复杂操作给封装起来
+//这还是在 C语言里只能做一个宏定义，要是在java,c++还不得搞一个模板之类的。
+//这里定义的都是 gc 相关的属性
 #define GC_REFCOUNT(p)				(p)->gc.refcount
 #define GC_TYPE(p)					(p)->gc.u.v.type
 #define GC_FLAGS(p)					(p)->gc.u.v.flags

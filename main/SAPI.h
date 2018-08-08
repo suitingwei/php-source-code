@@ -367,7 +367,6 @@ SAPI_API void sapi_activate(void);
 SAPI_API void sapi_deactivate(void);
 SAPI_API void sapi_initialize_empty_request(void);
 SAPI_API int sapi_header_op(sapi_header_op_enum op, void *arg);
-
 /* Deprecated functions. Use sapi_header_op instead. */
 SAPI_API int sapi_add_header_ex(char *header_line, size_t header_line_len, zend_bool duplicate, zend_bool replace);
 SAPI_API int sapi_send_headers(void);
@@ -393,14 +392,10 @@ SAPI_API int sapi_get_target_uid(uid_t *);
 SAPI_API int sapi_get_target_gid(gid_t *);
 SAPI_API double sapi_get_request_time(void);
 SAPI_API void sapi_terminate_process(void);
-/* header_handler() constants */
-
-BEGIN_EXTERN_C()
 SAPI_API SAPI_POST_READER_FUNC(sapi_read_standard_form_data);
 SAPI_API SAPI_POST_READER_FUNC(php_default_post_reader);
 SAPI_API SAPI_TREAT_DATA_FUNC(php_default_treat_data);
 SAPI_API SAPI_INPUT_FILTER_FUNC(php_default_input_filter);
-END_EXTERN_C()
 
 #define STANDARD_SAPI_MODULE_PROPERTIES \
 	NULL, /* php_ini_path_override   */ \

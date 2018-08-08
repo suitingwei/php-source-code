@@ -28,6 +28,10 @@
 #define OPTERRNF (2)
 #define OPTERRARG (3)
 
+/**
+ * 输出 php 命令行的参数错误
+ *
+ */
 static int php_opt_error(int argc, char * const *argv, int oint, int optchr, int err, int show_err) /* {{{ */
 {
 	if (show_err)
@@ -103,16 +107,20 @@ PHPAPI int php_getopt(int argc, char* const *argv, const opt_struct opts[], char
 		} 
 
 		//如果中划线后面没有参数，报错呗。 比如 `php -`,这种肯定要报错的
-		if (!argv[*optind][1])
-		{
-			/*
-			* use to specify stdin. Need to let pgm process this and
-			* the following args
-			*/
+		if (!argv[*optind][1]) {
 			return(EOF);
 		}
 	}
 	
+	/**
+	 * 判断长短参数
+	 * --------------------------------------------------------------
+	 * cli 长参数模式: php --ini, php --rc
+	 * cli 短参数模式: php -v, php -h
+	 * 
+	 * @author ufoddd001@gmail.com
+	 * @date 2018-08-07
+	 */
 	if ((argv[*optind][0] == '-') && (argv[*optind][1] == '-')) {
 		const char *pos;
 		size_t arg_end = strlen(argv[*optind])-1;
@@ -146,7 +154,10 @@ PHPAPI int php_getopt(int argc, char* const *argv, const opt_struct opts[], char
 		optchr = 0;
 		dash = 0;
 		arg_start += (int)strlen(opts[php_optidx].opt_name);
-	} else {
+	} 
+
+    // 短参数模式
+	else {
 		if (!dash) {
 			dash = 1;
 			optchr = 1;

@@ -1,23 +1,3 @@
-/*
-   +----------------------------------------------------------------------+
-   | PHP Version 7                                                        |
-   +----------------------------------------------------------------------+
-   | Copyright (c) 1997-2018 The PHP Group                                |
-   +----------------------------------------------------------------------+
-   | This source file is subject to version 3.01 of the PHP license,      |
-   | that is bundled with this package in the file LICENSE, and is        |
-   | available through the world-wide-web at the following url:           |
-   | http://www.php.net/license/3_01.txt                                  |
-   | If you did not receive a copy of the PHP license and are unable to   |
-   | obtain it through the world-wide-web, please send a note to          |
-   | license@php.net so we can mail you a copy immediately.               |
-   +----------------------------------------------------------------------+
-   | Original design:  Shane Caraveo <shane@caraveo.com>                  |
-   | Authors: Andi Gutmans <andi@zend.com>                                |
-   |          Zeev Suraski <zeev@zend.com>                                |
-   +----------------------------------------------------------------------+
-*/
-
 /* $Id$ */
 
 #include <ctype.h>
@@ -45,24 +25,37 @@
 
 #include "php_content_types.h"
 
-#ifdef ZTS
-SAPI_API int sapi_globals_id;
-#else
+/**
+ * sapi 全局结构体。定义在 main/sapi.h
+ */
 sapi_globals_struct sapi_globals;
-#endif
+
+/**
+ * 全局的sapi_module模块变量
+ * True globals (no need for thread safety) 
+ */
+SAPI_API sapi_module_struct sapi_module;
 
 static void _type_dtor(zval *zv)
 {
 	free(Z_PTR_P(zv));
 }
 
+/**
+ * 初始化sapi_globals这个全局变量。
+ * 无非是cli模式、fpm模式下的几种不同环境的时候装载不同的属性
+ *
+ * @author ufoddd001@gmail.com
+ */
 static void sapi_globals_ctor(sapi_globals_struct *sapi_globals)
 {
-#ifdef ZTS
-	ZEND_TSRMLS_CACHE_UPDATE();
-#endif
+	//对一个结构体设置memset 0,会直接把结构体的所有数据全部重置。包括数组、字符串、int 等。
 	memset(sapi_globals, 0, sizeof(*sapi_globals));
+
+	//known_post_content_types 是一个 hash table，所以要调用hash table init
 	zend_hash_init_ex(&sapi_globals->known_post_content_types, 8, NULL, _type_dtor, 1, 0);
+
+	//设置sapi的content-types
 	php_setup_sapi_content_types();
 }
 
@@ -71,27 +64,27 @@ static void sapi_globals_dtor(sapi_globals_struct *sapi_globals)
 	zend_hash_destroy(&sapi_globals->known_post_content_types);
 }
 
-/* True globals (no need for thread safety) */
-SAPI_API sapi_module_struct sapi_module;
 
 
+/**
+ * 启动sapi
+ * -----------------------------------------------------------------------------------------------
+ * 在学习源代码过程中，把线程安全和win32相关的宏定义都删除了。从最简单的 linux 架构开始学习。并且不打算
+ * 学习win32,zts的知识。
+ * 
+ * @param sapi_module_struct *sf sapi 模块指针，这里的 sf是指各个模式的 sapi，比如cli, cgi, fpm等
+ 									  要做的事情无非就是执行以下这个模块下的一些规定的指针函数。
+ *
+ */
 SAPI_API void sapi_startup(sapi_module_struct *sf)
 {
 	sf->ini_entries = NULL;
+
+	//设置全局的sap_module为当前传入的变量
 	sapi_module = *sf;
 
-#ifdef ZTS
-	ts_allocate_id(&sapi_globals_id, sizeof(sapi_globals_struct), (ts_allocate_ctor) sapi_globals_ctor, (ts_allocate_dtor) sapi_globals_dtor);
-# ifdef PHP_WIN32
-	_configthreadlocale(_ENABLE_PER_THREAD_LOCALE);
-# endif
-#else
+	//初始化sapi_globals变量,这个变量是全局的，在 main/sapi.c 中声明
 	sapi_globals_ctor(&sapi_globals);
-#endif
-
-#ifdef PHP_WIN32
-	tsrm_win32_startup();
-#endif
 
 	reentrancy_startup();
 }
