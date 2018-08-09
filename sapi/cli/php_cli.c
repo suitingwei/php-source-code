@@ -405,14 +405,18 @@ static void sapi_cli_send_header(sapi_header_struct *sapi_header, void *server_c
 }
 /* }}} */
 
-static int php_cli_startup(sapi_module_struct *sapi_module) /* {{{ */
-{
+/**
+ * sapi启动模块
+ * 就是调用了module 初始化
+ */
+static int php_cli_startup(sapi_module_struct *sapi_module) 
+
+	//这里不启动任何模块? 
 	if (php_module_startup(sapi_module, NULL, 0)==FAILURE) {
 		return FAILURE;
 	}
 	return SUCCESS;
 }
-/* }}} */
 
 /* {{{ sapi_cli_ini_defaults */
 
@@ -1346,6 +1350,7 @@ exit_loop:
 	//todo ini 是否忽略 cwd, cwd 是啥？ 
 	sapi_module->php_ini_ignore_cwd = 1;
 
+	//启动 sapi 模块，注册 post entry,这里面会判断是否启动过 sapi
 	sapi_startup(sapi_module);
 
 	//临时标记sapi_started为1具体是否成功是在sapi_module里
@@ -1356,18 +1361,22 @@ exit_loop:
 
 	sapi_module->executable_location = argv[0];
 
+	//这个判断不知道啥意思，按理说这个应该就是相等啊。
 	if (sapi_module == &cli_sapi_module) {
+		//如果指定了ini entries,那么就把默认的 ini 复制到这个 ini_entries
 		if (ini_entries) {
 			ini_entries = realloc(ini_entries, ini_entries_len + sizeof(HARDCODED_INI));
 			memmove(ini_entries + sizeof(HARDCODED_INI) - 2, ini_entries, ini_entries_len + 1);
 			memcpy(ini_entries, HARDCODED_INI, sizeof(HARDCODED_INI) - 2);
 		} else {
+			//如果没有指定ini_entries,直接使用hard_coded ini
 			ini_entries = malloc(sizeof(HARDCODED_INI));
 			memcpy(ini_entries, HARDCODED_INI, sizeof(HARDCODED_INI));
 		}
 		ini_entries_len += sizeof(HARDCODED_INI) - 2;
 	}
 
+	//设置sapi模块的ini entries
 	sapi_module->ini_entries = ini_entries;
 
 	/* startup after we get the above ini override se we get things right */

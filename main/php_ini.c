@@ -518,7 +518,6 @@ int php_init_config(void)
 				strlcat(php_ini_search_path, paths_separator, search_path_size);
 			}
 			strlcat(php_ini_search_path, ".", search_path_size);
-		}
 
 		if (PG(php_binary)) {
 			char *separator_location, *binary_location;

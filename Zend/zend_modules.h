@@ -70,6 +70,9 @@ struct _zend_ini_entry;
 typedef struct _zend_module_entry zend_module_entry;
 typedef struct _zend_module_dep zend_module_dep;
 
+/**
+ * zend module模块
+ */
 struct _zend_module_entry {
 	unsigned short size;
 	unsigned int zend_api;
@@ -86,11 +89,7 @@ struct _zend_module_entry {
 	void (*info_func)(ZEND_MODULE_INFO_FUNC_ARGS);
 	const char *version;
 	size_t globals_size;
-#ifdef ZTS
-	ts_rsrc_id* globals_id_ptr;
-#else
 	void* globals_ptr;
-#endif
 	void (*globals_ctor)(void *global);
 	void (*globals_dtor)(void *global);
 	int (*post_deactivate_func)(void);

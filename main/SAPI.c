@@ -52,7 +52,7 @@ static void sapi_globals_ctor(sapi_globals_struct *sapi_globals)
 	//对一个结构体设置memset 0,会直接把结构体的所有数据全部重置。包括数组、字符串、int 等。
 	memset(sapi_globals, 0, sizeof(*sapi_globals));
 
-	//known_post_content_types 是一个 hash table，所以要调用hash table init
+	//known_post_content_types 是一个 hash table，所以要调用hash table init,具体就是设置了一堆null
 	zend_hash_init_ex(&sapi_globals->known_post_content_types, 8, NULL, _type_dtor, 1, 0);
 
 	//设置sapi的content-types
@@ -83,9 +83,12 @@ SAPI_API void sapi_startup(sapi_module_struct *sf)
 	//设置全局的sap_module为当前传入的变量
 	sapi_module = *sf;
 
-	//初始化sapi_globals变量,这个变量是全局的，在 main/sapi.c 中声明
+	// 初始化sapi_globals变量,这个变量是全局的，在 main/sapi.c 中声明
+	// 主要是注册了post_entry
 	sapi_globals_ctor(&sapi_globals);
 
+	// reentrancy是可折返的调用，允许递归的意思,貌似加锁什么的
+	// todo ?
 	reentrancy_startup();
 }
 
@@ -424,10 +427,12 @@ SAPI_API void sapi_activate_headers_only(void)
 	}
 }
 
-/*
+/**
+ * 激活 sapi
+ * -------------------------------------------------------
+ * 基本都是在设置sapi_globals_struct 这个结构体的数据
  * Called from php_request_startup() for every request.
  */
-
 SAPI_API void sapi_activate(void)
 {
 	zend_llist_init(&SG(sapi_headers).headers, sizeof(sapi_header_struct), (void (*)(void *)) sapi_free_header, 0);
@@ -539,6 +544,9 @@ SAPI_API void sapi_deactivate(void)
 }
 
 
+/**
+ * 初始化空的请求
+ */
 SAPI_API void sapi_initialize_empty_request(void)
 {
 	SG(server_context) = NULL;
@@ -925,9 +933,17 @@ SAPI_API int sapi_send_headers(void)
 }
 
 
+/**
+ * 给 sapi注册post_entries.
+ * 这个理念大概就是拆分，吧整个模块咔咔的拆分，然后每一个模块只是有其他模块组成
+ * 比如post数据读取模块，post 数据处理模块。content-type 加载模块
+ * 这个函数更是如此：注册 entries 的函数就是循环调用了register_entry
+ */
 SAPI_API int sapi_register_post_entries(sapi_post_entry *post_entries)
 {
-	sapi_post_entry *p=post_entries;
+	//这里传入的是数组的名字，post_entries,因为数组名就是数组第一个元素的内存地址。
+	//所以他也就是一个 sapi_post_entry 的指针类型
+	sapi_post_entry *p = post_entries;
 
 	while (p->content_type) {
 		if (sapi_register_post_entry(p) == FAILURE) {
@@ -939,14 +955,28 @@ SAPI_API int sapi_register_post_entries(sapi_post_entry *post_entries)
 }
 
 
+/**
+ * 注册 sapi 的post_entry
+ * --------------------------------------------------------------------------------
+ * SG 定义在sapi.h,获取sapi_globals这个全局结构体,意思是 sapi_globals的意思估计，所以叫 S(api)G(lobals)
+ * EG 定义在zend/zend_globals_marcos.h, 用来获取EXECUTOR，执行器的全局变量,所以叫 E(xecutor)G(lobals)
+ */
 SAPI_API int sapi_register_post_entry(sapi_post_entry *post_entry)
 {
+	//这个意思就是已经启动成功的话就不要重复调用这个方法了。
 	if (SG(sapi_started) && EG(current_execute_data)) {
 		return FAILURE;
 	}
-	return zend_hash_str_add_mem(&SG(known_post_content_types),
-			post_entry->content_type, post_entry->content_type_len,
-			(void *) post_entry, sizeof(sapi_post_entry)) ? SUCCESS : FAILURE;
+
+	// 在sapi 全局变量的known_post_content_types添加这个 post type 的 entry
+	// 其实放到 php 里就是一个 key - value的映射，不过 value 不是一个具体的值，而是一个回调函数
+	return zend_hash_str_add_mem(
+			&SG(known_post_content_types),
+			post_entry->content_type, 
+			post_entry->content_type_len,
+			(void *) post_entry, 
+			sizeof(sapi_post_entry)
+	) ? SUCCESS : FAILURE;
 }
 
 SAPI_API void sapi_unregister_post_entry(sapi_post_entry *post_entry)

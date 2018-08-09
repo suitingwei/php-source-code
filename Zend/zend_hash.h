@@ -622,7 +622,9 @@ static zend_always_inline void *zend_hash_add_mem(HashTable *ht, zend_string *ke
 }
 
 /**
-
+ * 往 hash table里添加一个元素
+ *
+ */
 static zend_always_inline void *zend_hash_str_add_mem(HashTable *ht, const char *str, size_t len, void *pData, size_t size)
 {
 	zval tmp, *zv;

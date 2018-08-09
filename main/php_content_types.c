@@ -28,6 +28,8 @@
  * post数据的来源。好像post_entry是这个意思  
  * 第一种：普通的 html form 表单上传的数据： application/x-www-form-urlencoded,都是key-value
  * 第二种：form表单中新增的file标签， rfc-1867-uploaded-file,是二进制流水
+ * -----------------------------------------------------------------------------------------------
+ * 一定要记住，c 里的结构体的初始化，用的是大括号
  */
 static sapi_post_entry php_post_entries[] = {
 	{ DEFAULT_POST_CONTENT_TYPE, sizeof(DEFAULT_POST_CONTENT_TYPE)-1, sapi_read_standard_form_data,	php_std_post_handler },
@@ -61,7 +63,7 @@ int php_startup_sapi_content_types(void)
 
 /**
  * 设置sapi的 content-type
- * 初始化的时候才设置呢
+ * 初始化的时候才设置呢,在 sapi_startup函数中调用了
  */
 int php_setup_sapi_content_types(void)
 {

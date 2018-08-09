@@ -294,7 +294,9 @@ typedef struct _sapi_globals_struct {
 	//全局的启动时间
 	double global_request_time;
 
-	//已知的的content-types
+	// 已知的的content-types,这里边是一个 hash-table，标记的是某一个 post的 content-type对应的处理函数
+	// 比如:  [ application/x-www-form-urlencoded  => post-handler ] 
+	// 基础的 post 数据处理器都定义在 php_content_types.h
 	HashTable known_post_content_types;
 
 	//todo 回调？
@@ -330,8 +332,23 @@ typedef enum {					/* Parameter: 			*/
 
 /*---------------------------全局变量、全局函数声明------------------------------*/
 
+
+// 声明了一个 sapi_module_struct 的全局变量
+// 作者说这个是真的全局变量,
+// 今天看了看extern这个关键字的意思，基本上是告诉编译器，这个变量我只是引用了一发，而不是真的定义
+// 这个变量真实是定义在其他文件的,麻蛋，这个不就是定义在 sapi.c吗。。
+// todo 此处还需要好好理解这个关键字。
+extern SAPI_API sapi_module_struct sapi_module; 
+
+//声明了 sapi_globals_struct,保存全局信息
+extern SAPI_API sapi_globals_struct sapi_globals;
+
 /**
  * todo 这个函数很重要，各种地方都在使用。一定要看明白。
+ * 查看了查看文档，终于搞懂了，这个就是方便的读取一个全局变量的意思。。
+ * 比如上面定义的一个全局变量 sapi_globals,我们怎么能够随时读取他的信息呢，
+ * 当然可以说是,各个地方都写一下全局变量名字然后在获取对应属性。但是这样可能
+ * 比较麻烦，所以这里都写得是宏定义
  */
 #define SG(v) (sapi_globals.v)
 
@@ -353,12 +370,6 @@ typedef enum {					/* Parameter: 			*/
 #define SAPI_TREAT_DATA_FUNC(treat_data) void treat_data(int arg, char *str, zval* destArray)
 #define SAPI_INPUT_FILTER_FUNC(input_filter) unsigned int input_filter(int arg, char *var, char **val, size_t val_len, size_t *new_val_len)
 
-// 声明了一个 sapi_module_struct 的全局变量
-// 作者说这个是真的全局变量
-extern SAPI_API sapi_module_struct sapi_module; 
-
-//声明了 sapi_globals_struct,保存全局信息
-extern SAPI_API sapi_globals_struct sapi_globals;
 
 
 SAPI_API void sapi_startup(sapi_module_struct *sf);
