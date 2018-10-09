@@ -167,7 +167,6 @@ typedef union _zend_value {
  * php 弱类型变量的实现机制。
  * 这里的一个_zval_struct就是一个 php 的变量，比如 $var, 具体这个zval的值是保存在了zvalue中。
  * 使用u1这个联合体来判断到底是读取 zend_value中的哪一个字段
- *
  */
 struct _zval_struct {
 	zend_value        value;				/* 具体的数据 */

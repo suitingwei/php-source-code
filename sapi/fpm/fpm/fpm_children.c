@@ -56,12 +56,18 @@ static struct fpm_child_s *fpm_child_alloc() /* {{{ */
 }
 /* }}} */
 
+/**
+ * 回收结构体的内存
+ */
 static void fpm_child_free(struct fpm_child_s *child) /* {{{ */
 {
 	free(child);
 }
 /* }}} */
 
+/**
+ * 关闭文件描述符，触发关闭时间。 
+ */
 static void fpm_child_close(struct fpm_child_s *child, int in_event_loop) /* {{{ */
 {
 	if (child->fd_stdout != -1) {
@@ -104,9 +110,13 @@ static void fpm_child_link(struct fpm_child_s *child) /* {{{ */
 
 static void fpm_child_unlink(struct fpm_child_s *child) /* {{{ */
 {
+	//这个工作进程所在的进程池的“运行工作进程数”-1
 	--child->wp->running_children;
+
+	//全局的 fpm 运行工作进程数-1
 	--fpm_globals.running_children;
 
+	//这里就是判断了是否有前节点，然后把当前这个节点去掉
 	if (child->prev) {
 		child->prev->next = child->next;
 	} else {
@@ -119,11 +129,26 @@ static void fpm_child_unlink(struct fpm_child_s *child) /* {{{ */
 }
 /* }}} */
 
+/**
+ * 查找子进程，这个应该是指在父进程的容器数组（链表）中
+ * 查找到指定的子进程信息
+ */
 static struct fpm_child_s *fpm_child_find(pid_t pid) /* {{{ */
 {
 	struct fpm_worker_pool_s *wp;
 	struct fpm_child_s *child = 0;
 
+	/**
+	 * 遍历多个进程池，把每一个进程池里的所有工作子进程都查找一发
+	 * 这里即便是伟大的 php 源代码也只是两次循环而已。没什么大不了的。
+	 * 更重要的是整体架构.
+	 * ----------------------------------------------------------------
+	 * fpm_woker_all_pools 是所有的进程池，pool 这个结构的链表
+	 * @see fpm_work_pool.h
+	 * 
+	 * 每一个pool进程池都有多个子进程，child 这个结构的链表
+	 * @see fpm_children.h
+	 */
 	for (wp = fpm_worker_all_pools; wp; wp = wp->next) {
 
 		for (child = wp->children; child; child = child->next) {
@@ -176,33 +201,67 @@ int fpm_children_free(struct fpm_child_s *child) /* {{{ */
 
 void fpm_children_bury() /* {{{ */
 {
-	int status;
-	pid_t pid;
-	struct fpm_child_s *child;
+	int status; 				//子进程退出状态
+	pid_t pid;  				//退出的子进程的进程 id 
+	struct fpm_child_s *child;  //父进程中的用于管理子进程的进程信息的结构体
 
+	/**
+	 * 循环检测所有的子进程，判断他们的退出状态，然后对应处理
+	 * 这里使用的是非阻塞调用， WNOHANG, W_NO_HANG,意思是如果子进程没有退出
+	 * 那么这个函数会直接返回0，而不会阻塞住进程。因为这里是循环判断的所有子进程
+	 * 所有使用非阻塞调用
+	 */
 	while ( (pid = waitpid(-1, &status, WNOHANG | WUNTRACED)) > 0) {
 		char buf[128];
 		int severity = ZLOG_NOTICE;
+
+		//是否需要重启子进程
 		int restart_child = 1;
 
+		// 查找退出的子进程，这个时候要注意，退出不代表就是出错了。
+		// 需要根据返回值再去判断，才知道因为报错还是啥子其他原因
 		child = fpm_child_find(pid);
 
+		/**
+		 * WIFEXITED这个宏是 c 标准里的宏，用来判断wait调用返回的status,是否是正常退出。
+		 * 如果是正常退出，那么W_IF_EXITED返回就是非0值，正常退出比如调用了exit(0/1/3)
+		 * @link https://www.cnblogs.com/delmory/p/3918811.html
+		 * @link https://linux.die.net/man/3/wait, https://linux.die.net/man/2/wait
+		 *
+		 * 所以这个判断表示： 这个自己成是正常退出的
+		 */
 		if (WIFEXITED(status)) {
 
+			// W_EXIT_STATUS获取当进程正常退出之后，退出的返回值
 			snprintf(buf, sizeof(buf), "with code %d", WEXITSTATUS(status));
 
-			/* if it's been killed because of dynamic process management
+			/**
+			 * if it's been killed because of dynamic process management
 			 * don't restart it automaticaly
+			 * --------------------------------------------------------------------
+			 * 这里说明在动态调整子进程数量的时候，父进程会设置子进程的状态字段。
+			 * 在父子进程 IPC 之后，父进程吧这个子进程的状态置为因为空闲杀死，这个
+			 * 时候就不需要重启这个子进程了。
 			 */
 			if (child && child->idle_kill) {
 				restart_child = 0;
 			}
 
+			/**
+			 * 如果退出的状态吗不是 OK 退出。那么表示出事了，做一个标记。估计下面还要处理这个。
+			 */
 			if (WEXITSTATUS(status) != FPM_EXIT_OK) {
 				severity = ZLOG_WARNING;
 			}
 
-		} else if (WIFSIGNALED(status)) {
+		} 
+		/**
+		 * 上面是子进程自己调用了exit退出，W_IF_SIGNALED 这里的宏判断的是子进程是否是因为信号而结束。
+		 * 调用了这个宏之后，需要调用 W_TERM_SIG来获取具体的信号中断代码。
+		 * @link https://www.cnblogs.com/delmory/p/3918811.html
+		 * @link https://linux.die.net/man/3/wait, https://linux.die.net/man/2/wait
+		 */
+		else if (WIFSIGNALED(status)) {
 			const char *signame = fpm_signal_names[WTERMSIG(status)];
 			const char *have_core = WCOREDUMP(status) ? " - core dumped" : "";
 
@@ -212,7 +271,8 @@ void fpm_children_bury() /* {{{ */
 
 			snprintf(buf, sizeof(buf), "on signal %d (%s%s)", WTERMSIG(status), signame, have_core);
 
-			/* if it's been killed because of dynamic process management
+			/**
+			 *if it's been killed because of dynamic process management
 			 * don't restart it automaticaly
 			 */
 			if (child && child->idle_kill && WTERMSIG(status) == SIGQUIT) {
@@ -222,7 +282,14 @@ void fpm_children_bury() /* {{{ */
 			if (WTERMSIG(status) != SIGQUIT) { /* possible request loss */
 				severity = ZLOG_WARNING;
 			}
-		} else if (WIFSTOPPED(status)) {
+		} 
+
+		/**
+		 * linux 编程真的是形成了模板了。这个关于 wait 的处理，基本上就是通用的一个模板
+		 * 处理的都是几个标准大 if，包括正常退出，信号量退出，进程悬挂等。然后就是在这
+		 * 几个条件中处理自己的业务逻辑
+		 */
+		else if (WIFSTOPPED(status)) {
 
 			zlog(ZLOG_NOTICE, "child %d stopped for tracing", (int) pid);
 
@@ -233,12 +300,18 @@ void fpm_children_bury() /* {{{ */
 			continue;
 		}
 
+		/**
+		 * 这里不知道为啥，难道还有子进程不在父进程的记录中的情况？
+		 * 反正是判断了一发，如果真的找到了这个退出的子进程。给这个子进程收尸。
+		 */
 		if (child) {
 			struct fpm_worker_pool_s *wp = child->wp;
 			struct timeval tv1, tv2;
 
+			//从pool的工作进程链表中移除这个进程节点
 			fpm_child_unlink(child);
 
+			//清除这个进程池中的这个进程的得分板
 			fpm_scoreboard_proc_free(wp->scoreboard, child->scoreboard_i);
 
 			fpm_clock_get(&tv1);
@@ -254,8 +327,10 @@ void fpm_children_bury() /* {{{ */
 				zlog(ZLOG_DEBUG, "[pool %s] child %d has been killed by the process management after %ld.%06d seconds from start", child->wp->config->name, (int) pid, tv2.tv_sec, (int) tv2.tv_usec);
 			}
 
+			//关闭这个子进程,关闭文件描述符，释放内存
 			fpm_child_close(child, 1 /* in event_loop */);
 
+			
 			fpm_pctl_child_exited();
 
 			if (last_faults && (WTERMSIG(status) == SIGSEGV || WTERMSIG(status) == SIGBUS)) {
